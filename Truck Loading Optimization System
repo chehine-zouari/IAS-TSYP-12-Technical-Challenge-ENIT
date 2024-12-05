@@ -1,0 +1,146 @@
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from py3dbp import Packer, Bin, Item
+import matplotlib.cm as cm
+
+# Custom Item class with resistance
+class ItemWithResistance(Item):
+    def __init__(self, name, width, height, depth, weight, resistance):
+        super().__init__(name, width, height, depth, weight)
+        self.resistance = resistance  # Added resistance attribute
+
+
+def visualize_packing(bin):
+    bin.width = float(bin.width)
+    bin.height = float(bin.height)
+    bin.depth = float(bin.depth)
+
+    for item in bin.items:
+        item.position = tuple(float(coord) for coord in item.position)
+        item.width = float(item.width)
+        item.height = float(item.height)
+        item.depth = float(item.depth)
+
+    print(f"Bin dimensions: width={bin.width}, height={bin.height}, depth={bin.depth}")
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # Plot the truck (container)
+    truck_points = [
+        [0, 0, 0],
+        [bin.width, 0, 0],
+        [bin.width, bin.height, 0],
+        [0, bin.height, 0],
+        [0, 0, bin.depth],
+        [bin.width, 0, bin.depth],
+        [bin.width, bin.height, bin.depth],
+        [0, bin.height, bin.depth]
+    ]
+    ax.add_collection3d(Poly3DCollection([
+        truck_points[:4], truck_points[4:], 
+        [truck_points[i] for i in [0, 1, 5, 4]], 
+        [truck_points[i] for i in [1, 2, 6, 5]], 
+        [truck_points[i] for i in [2, 3, 7, 6]], 
+        [truck_points[i] for i in [3, 0, 4, 7]]
+    ], alpha=0.1, edgecolor='k'))
+
+    # Assign a unique color to each box type
+    unique_names = list(set(item.name for item in bin.items))
+    color_map = cm.get_cmap("tab20", len(unique_names))
+    name_to_color = {name: color_map(idx) for idx, name in enumerate(unique_names)}
+
+    # Plot all packed boxes
+    for item in bin.items:
+        x, y, z = item.position
+        dx, dy, dz = item.width, item.height, item.depth
+        box_points = [
+            [x, y, z],
+            [x + dx, y, z],
+            [x + dx, y + dy, z],
+            [x, y + dy, z],
+            [x, y, z + dz],
+            [x + dx, y, z + dz],
+            [x + dx, y + dy, z + dz],
+            [x, y + dy, z + dz]
+        ]
+        ax.add_collection3d(Poly3DCollection([
+            [box_points[i] for i in [0, 1, 5, 4]],
+            [box_points[i] for i in [1, 2, 6, 5]],
+            [box_points[i] for i in [2, 3, 7, 6]],
+            [box_points[i] for i in [3, 0, 4, 7]],
+            [box_points[i] for i in [0, 1, 2, 3]],
+            [box_points[i] for i in [4, 5, 6, 7]]
+        ], alpha=0.7, edgecolor='k', facecolor=name_to_color[item.name], label=item.name))
+
+    ax.set_xlabel('Width (cm)')
+    ax.set_ylabel('Height (cm)')
+    ax.set_zlabel('Depth (cm)')
+    ax.set_xlim(0, bin.width)
+    ax.set_ylim(0, bin.height)
+    ax.set_zlim(0, bin.depth)
+    ax.view_init(30, 30)  # Set the viewing angle
+
+    # Create a legend for box types
+    handles = [plt.Line2D([0], [0], color=name_to_color[name], lw=4) for name in unique_names]
+    ax.legend(handles, unique_names, title="Box Types", loc='upper left', bbox_to_anchor=(1.05, 1))
+    plt.show()
+
+
+# Input and setup
+truck = Bin(
+    name="Truck",
+    width=240,  # in cm
+    height=120,  # in cm
+    depth=600,  # in cm
+    max_weight=100000  # in kg
+)
+
+num_boxes = int(input("Enter the number of different boxes: "))
+
+boxes = []
+
+for i in range(num_boxes):
+    print(f"\nEnter details for Box {i + 1}:")
+    name = input("Name: ")
+    width = int(input("Width (cm): "))
+    height = int(input("Height (cm): "))
+    depth = int(input("Depth (cm): "))
+    weight = int(input("Weight (kg): "))
+    resistance = int(input("Resistance (kg): "))  # Added input for resistance (max weight the box can support)
+    quantity = int(input("Quantity (number of identical boxes): "))  # New input for quantity
+
+    # Add multiple identical boxes with the same characteristics
+    for _ in range(quantity):
+        boxes.append(ItemWithResistance(name=name, width=width, height=height, depth=depth, weight=weight, resistance=resistance))
+
+
+# Packing process
+packer = Packer()
+packer.add_bin(truck)
+
+for box in boxes:
+    packer.add_item(box)
+
+packer.pack()
+
+# Display results
+print(f"\nPacking results for {truck.name}:\n")
+for b in packer.bins:
+    print(f"Bin: {b.name}")
+
+    packed_volume = sum(item.width * item.height * item.depth for item in b.items)
+    total_volume = b.width * b.height * b.depth
+    print(f"Packed Volume: {packed_volume} / {total_volume}")
+
+    print(f"Packed Weight: {sum(item.weight for item in b.items)} / {b.max_weight}")
+
+    print("\nPacked Items:")
+    for item in b.items:
+        print(f"- {item.name}: {item.position} (Rotated: {item.rotation_type})")
+
+    print("\nUnpacked Items:")
+    for item in b.unfitted_items:
+        print(f"- {item.name}: Cannot fit.")
+
+visualize_packing(truck)
